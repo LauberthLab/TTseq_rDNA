@@ -12,16 +12,16 @@ BW_DIR="${SCRATCH_DIR}/BIGWIGS"
 GENOME_DIR="/projects/b1042/LauberthLab/Genome/STAR_hg38+rDNA"
 SPIKEIN_GENOME_DIR="/projects/b1042/LauberthLab/Genome/STAR_index_dm6"
 
-# ── Parameters ───────────────────────────────────────────────────────────────
+# Parameters
 THREADS=40
 RAND_SEED=42
 BINSIZE=1
 NORMALIZE_USING="RPKM"
 
-# ── Metadata (override with -m flag) ─────────────────────────────────────────
+# Metadata (override with -m flag)
 METADATA="${METADATA:-$(dirname "${BASH_SOURCE[0]}")/metadata.tsv}"
 
-# ── Dry-run mode ─────────────────────────────────────────────────────────────
+# Dry-run mode 
 DRY_RUN="${DRY_RUN:-false}"
 
 run_cmd() {
@@ -33,7 +33,7 @@ run_cmd() {
     fi
 }
 
-# ── Logging ──────────────────────────────────────────────────────────────────
+# Logging
 PIPELINE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LOG_DIR="${PIPELINE_DIR}/logs"
 mkdir -p "${LOG_DIR}" 2>/dev/null
@@ -44,7 +44,7 @@ log() {
     echo "[${ts}] $*" | tee -a "${LOG_DIR}/pipeline_$(date +%Y%m%d).log"
 }
 
-# ── Metadata parsing ─────────────────────────────────────────────────────────
+# Metadata parsing
 
 get_all_samples() {
     awk -F'\t' '!/^#/ && NF>=1 {print $1}' "$METADATA"
@@ -73,7 +73,7 @@ get_samples_in_group() {
     awk -F'\t' -v g="$group" '!/^#/ && $4==g {print $1}' "$METADATA"
 }
 
-# ── Argument parsing ─────────────────────────────────────────────────────────
+# Argument parsing
 
 parse_args() {
     while getopts "m:ds:e:h" opt; do
