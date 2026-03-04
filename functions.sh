@@ -5,30 +5,26 @@
 
 # 
 # STEP 0: FastQC + FastQ Screen for a single sample
-step_fastqc() {
-    local sample=$1
-    local name=$(get_sample_name "$sample")
 
-    log "FASTQC | ${sample} (${name})"
+step_fastqc() {
+    log "FASTQC | Running on all FASTQs in ${FASTQ_DIR}"
 
     run_cmd fastqc \
-        "${FASTQ_DIR}/${sample}_R1_001.fastq.gz" \
-        "${FASTQ_DIR}/${sample}_R2_001.fastq.gz" \
-        -t 12 \
+        ${FASTQ_DIR}/*.fastq.gz \
+        -t 30 \
         -o "${QC_DIR}"
 
-# optional
     if [ "$RUN_FASTQ_SCREEN" = "true" ]; then
-        log "FASTQ_SCREEN | ${sample} (${name})"
+        log "FASTQ_SCREEN | Running on all FASTQs in ${FASTQ_DIR}"
 
         run_cmd ${FASTQ_SCREEN} \
-            "${FASTQ_DIR}/${sample}_R1_001.fastq.gz" \
-            "${FASTQ_DIR}/${sample}_R2_001.fastq.gz" \
+            ${FASTQ_DIR}/*.fastq.gz \
             --aligner BOWTIE2 \
-            --threads 12 \
+            --threads 20 \
             --outdir "${QC_DIR}"
     fi
 }
+
 
 # STEP 1: Trim a single sample
 step_trim() {
