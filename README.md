@@ -48,7 +48,6 @@ Pre-built FASTA and GTF files optimized for rDNA mapping are available from:
 
 > [https://github.com/vikramparalkar/rDNA-Mapping-Genomes](https://github.com/vikramparalkar/rDNA-Mapping-Genomes)
 
-The default ones are already added in the `Annotation` directory
 
 This repository provides `hg38+rDNA` FASTA files and corresponding GTF annotations that include proper gene features across the 47S precursor (5'ETS, 18S, ITS1, 5.8S, ITS2, 28S, 3'ETS) as well as the intergenic spacer (IGS).
 
@@ -68,8 +67,8 @@ STAR \
 Set `--sjdbOverhang` to your median read length minus 1 (e.g., 99 for 100 bp reads).
 
 The default ones on Quest: 
-FASTA files: /projects/b1042/LauberthLab/Genome/Human_hg38-rDNA_genome_v1.0
-GTF files: /projects/b1042/LauberthLab/Genome/20220806_hg38_refseq_chrR_KY962518.1_35500cut_renamed.gtf
+FASTA files: `/projects/b1042/LauberthLab/Genome/Human_hg38-rDNA_genome_v1.0`
+GTF files: `/projects/b1042/LauberthLab/Genome/20220806_hg38_refseq_chrR_KY962518.1_35500cut_renamed.gtf`
 
 
 Similarly, build a STAR index for the *Drosophila* dm6 spike-in genome using the standard dm6 FASTA and GTF from Ensembl or UCSC.
