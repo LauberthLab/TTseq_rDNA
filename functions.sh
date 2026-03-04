@@ -170,14 +170,29 @@ step_downsample() {
     fi
 
     local input_bam="${ALIGN_DIR}/${sample}_Aligned.sortedByCoord.out.bam"
-    local tmp_bam="${ALIGN_DIR}/${sample}_sub.bam"
     local output_bam="${ALIGN_DIR}/${sample}_sub_sorted.bam"
+
+    # If factor >= 1.0 (or very close), just symlink — no downsampling needed
+    local skip
+    skip=$(awk "BEGIN {print ($frac >= 0.99999) ? 1 : 0}")
+    if [ "$skip" -eq 1 ]; then
+        log "DOWNSAMPLE | ${sample} (${name}) frac=${frac} — skipping (factor ~1.0)"
+        run_cmd cp "$input_bam" "$output_bam"
+        run_cmd samtools index -@ ${THREADS} "$output_bam"
+        return 0
+    fi
 
     log "DOWNSAMPLE | ${sample} (${name}) frac=${frac}"
 
+    # samtools view -s SEED.FRAC interprets the decimal part as the fraction,
+    # so we need to pass e.g. 42.73 for 73%, NOT 42.1 for 100%.
+    # Pad fraction to avoid ambiguity: 0.1 -> use as-is (10%), 1.0 -> skipped above.
+    local tmp_bam="${ALIGN_DIR}/${sample}_sub.bam"
+
     run_cmd samtools view -b -@ ${THREADS} \
         -o "$tmp_bam" \
-        -s ${RAND_SEED}.${frac} \
+        --subsample ${frac} \
+        --subsample-seed ${RAND_SEED} \
         "$input_bam"
 
     run_cmd samtools sort -@ ${THREADS} \
@@ -187,7 +202,7 @@ step_downsample() {
     run_cmd rm -f "$tmp_bam"
     run_cmd samtools index -@ ${THREADS} "$output_bam"
 }
-
+    
 # ─────────────────────────────────────────────────────────────────────────────
 # STEP 6: Generate bigWig for a single sample
 # ─────────────────────────────────────────────────────────────────────────────
