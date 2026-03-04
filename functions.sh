@@ -1,13 +1,36 @@
 #!/bin/bash
-###############################################################################
 # functions.sh — Pipeline step functions
-# Each function operates on a single sample (loops handled by the caller)
-# or on all samples where noted.
-###############################################################################
+# Per-sample functions take a sample ID argument.
+# All-sample functions (normalize, merge, multiqc) iterate internally.
 
-# ─────────────────────────────────────────────────────────────────────────────
+# 
+# STEP 0: FastQC + FastQ Screen for a single sample
+step_fastqc() {
+    local sample=$1
+    local name=$(get_sample_name "$sample")
+
+    log "FASTQC | ${sample} (${name})"
+
+    run_cmd fastqc \
+        "${FASTQ_DIR}/${sample}_R1_001.fastq.gz" \
+        "${FASTQ_DIR}/${sample}_R2_001.fastq.gz" \
+        -t 12 \
+        -o "${QC_DIR}"
+
+# optional
+    if [ "$RUN_FASTQ_SCREEN" = "true" ]; then
+        log "FASTQ_SCREEN | ${sample} (${name})"
+
+        run_cmd ${FASTQ_SCREEN} \
+            "${FASTQ_DIR}/${sample}_R1_001.fastq.gz" \
+            "${FASTQ_DIR}/${sample}_R2_001.fastq.gz" \
+            --aligner BOWTIE2 \
+            --threads 12 \
+            --outdir "${QC_DIR}"
+    fi
+}
+
 # STEP 1: Trim a single sample
-# ─────────────────────────────────────────────────────────────────────────────
 step_trim() {
     local sample=$1
     local name=$(get_sample_name "$sample")
@@ -24,9 +47,8 @@ step_trim() {
         --json "${TRIM_DIR}/${sample}_fastp_report.json"
 }
 
-# ─────────────────────────────────────────────────────────────────────────────
 # STEP 2: Align a single sample to hg38+rDNA
-# ─────────────────────────────────────────────────────────────────────────────
+
 step_align_hg38() {
     local sample=$1
     local name=$(get_sample_name "$sample")
@@ -54,9 +76,7 @@ step_align_hg38() {
     run_cmd samtools index -@ ${THREADS} "${ALIGN_DIR}/${sample}_Aligned.sortedByCoord.out.bam"
 }
 
-# ─────────────────────────────────────────────────────────────────────────────
 # STEP 3: Align a single sample to dm6 spike-in
-# ─────────────────────────────────────────────────────────────────────────────
 step_align_spikein() {
     local sample=$1
     local name=$(get_sample_name "$sample")
@@ -83,16 +103,12 @@ step_align_spikein() {
     run_cmd samtools index -@ ${THREADS} "${ALIGN_DIR}/${sample}_spikein_Aligned.sortedByCoord.out.bam"
 }
 
-# ─────────────────────────────────────────────────────────────────────────────
-# STEP 4: Compute spike-in normalization factors (all samples at once)
-#   Writes: ${SCRATCH_DIR}/spikein_norm_factors.tsv
-# ─────────────────────────────────────────────────────────────────────────────
+# STEP 4: Compute spike-in normalization factors (all samples)
+
 step_normalize() {
     log "NORMALIZE | Computing spike-in normalization factors"
 
     local norm_file="${SCRATCH_DIR}/spikein_norm_factors.tsv"
-
-    # -- Count uniquely mapped spike-in reads --
     declare -A spikein_counts
     local min_count=""
 
@@ -105,7 +121,7 @@ step_normalize() {
 
         local count
         if [ "$DRY_RUN" = "true" ]; then
-            count=1000  # placeholder
+            count=1000
             echo "  [DRY-RUN] samtools view -@ ${THREADS} -c -q 255 $bam"
         else
             count=$(samtools view -@ ${THREADS} -c -q 255 "$bam")
@@ -121,9 +137,7 @@ step_normalize() {
 
     log "  Minimum spike-in count: ${min_count}"
 
-    # -- Compute fractions and write TSV --
     echo -e "sample_id\tspikein_reads\tnorm_factor" > "$norm_file"
-
     while IFS= read -r sample; do
         local count=${spikein_counts["$sample"]}
         local frac
@@ -135,10 +149,8 @@ step_normalize() {
     log "  Normalization factors -> ${norm_file}"
 }
 
-# ─────────────────────────────────────────────────────────────────────────────
-# STEP 5: Downsample a single sample using its spike-in norm factor
-#   Reads: ${SCRATCH_DIR}/spikein_norm_factors.tsv
-# ─────────────────────────────────────────────────────────────────────────────
+# STEP 5: Downsample a single sample
+
 step_downsample() {
     local sample=$1
     local name=$(get_sample_name "$sample")
@@ -200,10 +212,8 @@ step_bigwig() {
         --binSize ${BINSIZE}
 }
 
-# ─────────────────────────────────────────────────────────────────────────────
-# STEP 7: Merge replicates per condition and generate merged bigWigs
-#   (all samples at once — iterates over merge groups from metadata)
-# ─────────────────────────────────────────────────────────────────────────────
+# STEP 7: Merge replicates per condition, generate merged bigWigs (all samples)
+
 step_merge_bigwigs() {
     log "MERGE BIGWIGS | Merging replicates per condition"
 
@@ -236,4 +246,31 @@ step_merge_bigwigs() {
             --binSize ${BINSIZE}
 
     done < <(get_merge_groups)
+}
+
+# MULTIQC — post-QC (runs after step 0, covers FastQC + FastQ Screen only)
+step_multiqc_qc() {
+    log "MULTIQC (post-QC) | Aggregating QC reports"
+
+    run_cmd multiqc \
+        "${QC_DIR}" "${TRIM_DIR}" \
+        -o "${MULTIQC_DIR}" \
+        -n multiqc_qc_report \
+        --force
+
+    log "  Post-QC report -> ${MULTIQC_DIR}/multiqc_qc_report.html"
+}
+
+# STEP 8: MultiQC — final (runs at end, covers everything)
+
+step_multiqc_final() {
+    log "MULTIQC (final) | Aggregating all reports from ${SCRATCH_DIR}"
+
+    run_cmd multiqc \
+        "$SCRATCH_DIR" \
+        -o "${MULTIQC_DIR}" \
+        -n multiqc_final_report \
+        --force
+
+    log "  Final report -> ${MULTIQC_DIR}/multiqc_final_report.html"
 }

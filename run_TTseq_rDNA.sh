@@ -1,11 +1,11 @@
 #!/bin/bash
-#SBATCH -A p32170
-#SBATCH -p short
+#SBATCH -A <your_alloc>
+#SBATCH -p Normal
 #SBATCH -N 1
 #SBATCH -n 60
-#SBATCH -t 04:00:00
+#SBATCH -t 10:00:00
 #SBATCH --mem=50gb
-#SBATCH --job-name="TTseq_pipeline_run"
+#SBATCH --job-name="TTseq_pipeline"
 #SBATCH --output=logs/pipeline_%j.out
 #SBATCH --error=logs/pipeline_%j.err
 
@@ -16,55 +16,61 @@
 #   sbatch run_pipeline.sh                       # Full pipeline
 #   sbatch run_pipeline.sh -d                    # Dry-run
 #   sbatch run_pipeline.sh -m samples.tsv        # Custom metadata
-#   sbatch run_pipeline.sh -s 5 -e 6            # Only steps 5-6
+#   sbatch run_pipeline.sh -s 5 -e 7            # Only steps 5-7
 #   sbatch run_pipeline.sh -s 4 -e 4            # Only normalization
 #
 # Steps:
-#   1: Trim (fastp)              5: Downsample (samtools)
-#   2: Align hg38+rDNA (STAR)    6: BigWigs — individual (bamCoverage)
-#   3: Align dm6 spike-in (STAR) 7: BigWigs — merged reps (bamCoverage)
+#   0: FastQC + FastQ Screen     5: Downsample (samtools)
+#   1: Trim (fastp)              6: BigWigs — individual (bamCoverage)
+#   2: Align hg38+rDNA (STAR)    7: BigWigs - merged reps (bamCoverage)
+#   3: Align dm6 spike-in (STAR) 8: MultiQC
 #   4: Normalize (spike-in)
+
 
 set -euo pipefail
 
-SCRIPT_DIR="."
+SCRIPT_DIR=./
 
 # Source config and functions
 source "${SCRIPT_DIR}/config.sh"
 source "${SCRIPT_DIR}/functions.sh"
 
 # Defaults for step control
-START_STEP=${START_STEP:-1}
-END_STEP=${END_STEP:-7}
+START_STEP=${START_STEP:-0}
+END_STEP=${END_STEP:-8}
 
 parse_args "$@"
 ensure_dirs
 
 # Load modules
+module load fastqc
+module load multiqc
 module load fastp
 module load STAR
 module load samtools
 module load subread
 module load deeptools
 
-# Summary 
+# Summary
 NUM_SAMPLES=$(get_sample_count)
 
+log "============================================"
 log "  TT-seq Pipeline"
-log " " 
-log "  Metadata:  ${METADATA}"
-log "  Samples:   ${NUM_SAMPLES}"
-log "  Steps:     ${START_STEP} -> ${END_STEP}"
-log "  Dry-run:   ${DRY_RUN}"
-log "  Threads:   ${THREADS}"
+log "============================================"
+log "  Metadata:       ${METADATA}"
+log "  Samples:        ${NUM_SAMPLES}"
+log "  Steps:          ${START_STEP} -> ${END_STEP}"
+log "  Dry-run:        ${DRY_RUN}"
+log "  FastQ Screen:   ${RUN_FASTQ_SCREEN}"
+log "  Threads:        ${THREADS}"
+log "============================================"
 
-#Helper: should we run this step?
+# Helpers
 should_run() {
     local step=$1
     [ "$step" -ge "$START_STEP" ] && [ "$step" -le "$END_STEP" ]
 }
 
-# Helper: loop a per-sample function over all samples
 run_per_sample() {
     local func=$1
     while IFS= read -r sample; do
@@ -72,53 +78,71 @@ run_per_sample() {
     done < <(get_all_samples)
 }
 
-# Execute pipeline 
+# Execute pipeline
+
+if should_run 0; then
+    log "========== STEP 0/8: FastQC + FastQ Screen =========="
+    run_per_sample step_fastqc
+    log "Step 0 complete."
+
+    log "---------- MultiQC (post-QC) ----------"
+    step_multiqc_qc
+fi
 
 if should_run 1; then
-    log "========== STEP 1/7: Trimming =========="
+    log "========== STEP 1/8: Trimming =========="
     run_per_sample step_trim
     log "Step 1 complete."
 fi
 
 if should_run 2; then
-    log "========== STEP 2/7: Align hg38+rDNA =========="
+    log "========== STEP 2/8: Align hg38+rDNA =========="
     run_per_sample step_align_hg38
     log "Step 2 complete."
 fi
 
 if should_run 3; then
-    log "========== STEP 3/7: Align dm6 spike-in =========="
+    log "========== STEP 3/8: Align dm6 spike-in =========="
     run_per_sample step_align_spikein
     log "Step 3 complete."
 fi
 
 if should_run 4; then
-    log "========== STEP 4/7: Spike-in normalization =========="
+    log "========== STEP 4/8: Spike-in normalization =========="
     step_normalize
     log "Step 4 complete."
 fi
 
 if should_run 5; then
-    log "========== STEP 5/7: Downsampling =========="
+    log "========== STEP 5/8: Downsampling =========="
     run_per_sample step_downsample
     log "Step 5 complete."
 fi
 
 if should_run 6; then
-    log "========== STEP 6/7: Individual bigWigs =========="
+    log "========== STEP 6/8: Individual bigWigs =========="
     run_per_sample step_bigwig
     log "Step 6 complete."
 fi
 
 if should_run 7; then
-    log "========== STEP 7/7: Merged bigWigs =========="
+    log "========== STEP 7/8: Merged bigWigs =========="
     step_merge_bigwigs
     log "Step 7 complete."
 fi
 
-log " "
+if should_run 8; then
+    log "========== STEP 8/8: MultiQC (final) =========="
+    step_multiqc_final
+    log "Step 8 complete."
+fi
+
+log "============================================"
 log "  PIPELINE FINISHED"
-log "  BigWigs:    ${BW_DIR}"
-log "  Norm file:  ${SCRATCH_DIR}/spikein_norm_factors.tsv"
-log "  Logs:       ${LOG_DIR}"
-log " "
+log "  QC:              ${QC_DIR}"
+log "  MultiQC (QC):    ${MULTIQC_DIR}/multiqc_qc_report.html"
+log "  MultiQC (final): ${MULTIQC_DIR}/multiqc_final_report.html"
+log "  BigWigs:         ${BW_DIR}"
+log "  Norm file:       ${SCRATCH_DIR}/spikein_norm_factors.tsv"
+log "  Logs:            ${LOG_DIR}"
+log "============================================"

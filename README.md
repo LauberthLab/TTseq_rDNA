@@ -12,6 +12,7 @@ This pipeline processes paired-end TT-seq data through trimming, alignment to a 
 
 | Step | Description | Tool | Mode |
 |------|-------------|------|------|
+| 0 | FastQC + FastQ Screen (optional) | FastQC, FastQ Screen | per-sample |
 | 1 | Adapter trimming | fastp | per-sample |
 | 2 | Align to hg38+rDNA | STAR | per-sample |
 | 3 | Align to dm6 spike-in | STAR | per-sample |
@@ -19,14 +20,18 @@ This pipeline processes paired-end TT-seq data through trimming, alignment to a 
 | 5 | Downsample BAMs by norm factor | samtools | per-sample |
 | 6 | Generate individual replicate bigWigs | deeptools bamCoverage | per-sample |
 | 7 | Merge replicates per condition, generate merged bigWigs | samtools merge + bamCoverage | all samples |
+| 8 | MultiQC (final) | MultiQC | all samples |
+
+MultiQC runs twice: once automatically after Step 0 (covering FastQC/FastQ Screen results for a quick quality check) and again at Step 8 (aggregating all reports across the full pipeline).
 
 ### Dependency Graph
 
 ```
-Step 1 (trim)
+Step 0 (fastqc) → MultiQC (post-QC report)
+Step 1 (trim adapters and barcodes)
   ├──→ Step 2 (align hg38) ──────────┐
-  └──→ Step 3 (align dm6) → Step 4 (normalize) ──→ Step 5 (downsample) ──→ Step 6 (bigwigs)
-                                       Step 2 ──────────────────────────↗         └──→ Step 7 (merge bigwigs)
+  └──→ Step 3 (align dm6) → Step 4 (normalize) ──→ Step 5 (downsample) ──→ Step 6 (bigwigs) ──┐
+                                       Step 2 ──────────────────────────↗         └──→ Step 7 (merge bigwigs) ──→ Step 8 (multiqc final)
 ```
 
 ---
@@ -62,6 +67,11 @@ STAR \
 ```
 Set `--sjdbOverhang` to your median read length minus 1 (e.g., 99 for 100 bp reads).
 
+The default ones on Quest: 
+FASTA files: /projects/b1042/LauberthLab/Genome/Human_hg38-rDNA_genome_v1.0
+GTF files: /projects/b1042/LauberthLab/Genome/20220806_hg38_refseq_chrR_KY962518.1_35500cut_renamed.gtf
+
+
 Similarly, build a STAR index for the *Drosophila* dm6 spike-in genome using the standard dm6 FASTA and GTF from Ensembl or UCSC.
 
 ### Pre-built indices on Quest (Northwestern)
@@ -78,12 +88,17 @@ These paths are set as defaults in `config.sh`.
 ### Required Modules (Quest)
 
 ```
+fastqc (0.12.0)
+multiqc (1.14)
 fastp (0.23.4)
 STAR (2.7.5a)
 samtools (1.6)
 subread (2.0.3)
 deeptools (3.5.6)
+FastQ-Screen(0.15.3)
 ```
+
+FastQ Screen is optional and uses a local install at `/projects/b1042/LauberthLab/FastQ-Screen-0.15.3/fastq_screen`. Enable it with the `-f` flag.
 
 All are available via `module load` on Quest and are loaded automatically by the pipeline.
 
@@ -173,23 +188,32 @@ sbatch run_TTseq_rDNA.sh -d
 # Custom metadata file
 sbatch run_TTseq_rDNA.sh -m /path/to/my_samples.tsv
 
+# Enable FastQ Screen (off by default)
+sbatch run_TTseq_rDNA.sh -f
+
 # Run only specific steps
 sbatch run_TTseq_rDNA.sh -s 5 -e 7      # Downsample + bigWigs only
 sbatch run_TTseq_rDNA.sh -s 4 -e 4      # Recompute normalization only
-sbatch run_TTseq_rDNA.sh -s 6 -e 7      # Regenerate bigWigs only
+sbatch run_TTseq_rDNA.sh -s 0 -e 0      # QC only (FastQC + MultiQC)
+sbatch run_TTseq_rDNA.sh -s 6 -e 8      # Regenerate bigWigs + final MultiQC
 ```
 
 | Flag | Description | Default |
 |------|-------------|---------|
 | `-m` | Path to metadata TSV | `./metadata.tsv` |
 | `-d` | Dry-run mode | off |
-| `-s` | Start from step N | 1 |
-| `-e` | End after step N | 7 |
+| `-f` | Enable FastQ Screen | off |
+| `-s` | Start from step N | 0 |
+| `-e` | End after step N | 8 |
 | `-h` | Print help | — |
 
 ---
 
 ## Pipeline Details
+
+### Quality Control (Step 0)
+
+Runs FastQC on raw FASTQ files (both R1 and R2) for each sample, with reports written to `QC/`. Optionally runs FastQ Screen (enabled with `-f`) to check for contamination from other species. A post-QC MultiQC report (`multiqc_qc_report.html`) is generated automatically after this step so you can assess read quality before committing to the full pipeline.
 
 ### Trimming (Step 1)
 
@@ -216,6 +240,10 @@ Uses `samtools view -s` with the computed normalization fraction and a fixed ran
 
 Uses deeptools `bamCoverage` with RPKM normalization and 1 bp bin size. Step 6 generates per-replicate bigWigs from downsampled BAMs. Step 7 merges all replicates within each `merge_group` (defined in metadata) using `samtools merge`, then generates a merged bigWig per condition.
 
+### MultiQC (Step 8)
+
+Runs MultiQC across the entire `SCRATCH_DIR`, aggregating reports from FastQC, FastQ Screen, fastp, STAR, and deeptools into a single final report (`multiqc_final_report.html`). This complements the post-QC report generated after Step 0, giving a comprehensive view of the entire pipeline run.
+
 ---
 
 ## Output Files
@@ -224,6 +252,13 @@ After a successful run, key outputs are organized as:
 
 ```
 Data/
+├── QC/
+│   ├── {sample}_R1_001_fastqc.html
+│   ├── {sample}_R2_001_fastqc.html
+│   └── {sample}_R1_001_screen.html          # if -f enabled
+├── MULTIQC/
+│   ├── multiqc_qc_report.html               # post-QC (after Step 0)
+│   └── multiqc_final_report.html            # final (after Step 8)
 ├── FASTQ_TRIM/
 │   ├── {sample}_clean_R1.fastq.gz
 │   ├── {sample}_clean_R2.fastq.gz
@@ -266,10 +301,12 @@ All tunable parameters are in `config.sh`:
 | `SCRATCH_DIR` | `.../TTseq_rDNA_pipeline/Data` | Root data directory |
 | `GENOME_DIR` | `.../STAR_hg38+rDNA` | STAR index for hg38+rDNA |
 | `SPIKEIN_GENOME_DIR` | `.../STAR_index_dm6` | STAR index for dm6 |
+| `FASTQ_SCREEN` | `.../FastQ-Screen-0.15.3/fastq_screen` | Path to FastQ Screen executable |
 | `THREADS` | 40 | Threads for STAR, samtools, bamCoverage |
 | `RAND_SEED` | 42 | Random seed for downsampling reproducibility |
 | `BINSIZE` | 1 | bigWig bin size (bp) |
 | `NORMALIZE_USING` | RPKM | deeptools normalization method |
+| `RUN_FASTQ_SCREEN` | false | Enable FastQ Screen (set via `-f` flag) |
 
 ---
 
