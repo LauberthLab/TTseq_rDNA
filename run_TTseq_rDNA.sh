@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH -A <your_alloc>
+#SBATCH -A p32170
 #SBATCH -p normal
 #SBATCH -N 1
 #SBATCH -n 60
@@ -44,12 +44,12 @@ ensure_dirs
 
 # Load modules
 module load fastqc
-module load multiqc
+#module load multiqc
 module load fastp
 module load STAR
 module load samtools
 module load subread
-module load deeptools
+#module load deeptools
 
 # Summary
 NUM_SAMPLES=$(get_sample_count)
@@ -79,14 +79,18 @@ run_per_sample() {
 }
 
 # Execute pipeline
-
 if should_run 0; then
     log "========== STEP 0/8: FastQC + FastQ Screen =========="
-    run_per_sample step_fastqc
+    module load fastqc
+    step_fastqc
     log "Step 0 complete."
 
     log "---------- MultiQC (post-QC) ----------"
+    module load multiqc
     step_multiqc_qc
+    module unload multiqc
+    module unload fastqc
+
 fi
 
 if should_run 1; then
@@ -121,19 +125,25 @@ fi
 
 if should_run 6; then
     log "========== STEP 6/8: Individual bigWigs =========="
+    module load deeptools
     run_per_sample step_bigwig
+    module unload deeptools
     log "Step 6 complete."
 fi
 
 if should_run 7; then
     log "========== STEP 7/8: Merged bigWigs =========="
+    module load deeptools
     step_merge_bigwigs
+    module unload deeptools
     log "Step 7 complete."
 fi
 
 if should_run 8; then
     log "========== STEP 8/8: MultiQC (final) =========="
+    module load multiqc
     step_multiqc_final
+    module unload multiqc
     log "Step 8 complete."
 fi
 
