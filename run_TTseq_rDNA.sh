@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH -A <your_alloc>
-#SBATCH -p Normal
+#SBATCH -p normal
 #SBATCH -N 1
 #SBATCH -n 60
 #SBATCH -t 10:00:00
