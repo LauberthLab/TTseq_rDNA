@@ -223,10 +223,9 @@ Uses fastp with automatic adapter detection for paired-end reads. Generates per-
 
 STAR is run in two-pass mode for the primary hg38+rDNA alignment (Step 2) and single-pass for the dm6 spike-in (Step 3). Key STAR parameters:
 
-- `--outFilterMultimapNmax 10` — allows up to 10 multimapping positions (important for rDNA, which has ~300–400 tandem copies)
+- `--outFilterMultimapNmax 10` — allows up to 10 multimapping positions (important for rDNA, which has ~300–400 tandem copies), balances for the fact that the reads still align to a single annotation
 - `--outFilterMismatchNoverReadLmax 0.04` — strict mismatch filter
 - `--alignEndsType EndToEnd` — no soft-clipping
-- `--quantMode TranscriptomeSAM GeneCounts` — produces gene-level counts (used by DE_analysis.R)
 
 ### Spike-in Normalization (Step 4)
 
