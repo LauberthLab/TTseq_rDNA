@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH -A p32170
+#SBATCH -A <your_alloc>
 #SBATCH -p normal
 #SBATCH -N 1
 #SBATCH -n 60
