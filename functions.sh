@@ -285,3 +285,31 @@ step_multiqc_final() {
 
     log "  Final report -> ${MULTIQC_DIR}/multiqc_final_report.html"
 }
+
+
+step_poli_efficiency() {
+    local ttseq_bw=$1
+    local chip_bw=$2
+    local output_bw=$3
+
+    if [ ! -f "$ttseq_bw" ]; then
+        log "ERROR: TT-seq bigWig not found: $ttseq_bw"
+        return 1
+    fi
+
+    if [ ! -f "$chip_bw" ]; then
+        log "ERROR: Pol I ChIP bigWig not found: $chip_bw"
+        return 1
+    fi
+
+    log "POLI EFFICIENCY | $(basename "$ttseq_bw") / $(basename "$chip_bw")"
+
+    run_cmd bigwigCompare \
+        --bigwig1 "$ttseq_bw" \
+        --bigwig2 "$chip_bw" \
+        --binSize ${BINSIZE} \
+        -p max \
+        -o "$output_bw"
+
+    log "  -> ${output_bw}"
+}
