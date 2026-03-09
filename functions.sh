@@ -187,8 +187,7 @@ step_downsample() {
 
     run_cmd samtools view -b -@ ${THREADS} \
         -o "$tmp_bam" \
-        --subsample ${frac} \
-        --subsample-seed ${RAND_SEED} \
+        -s  ${RAND_SEED}.${frac} \
         "$input_bam"
 
     run_cmd samtools sort -@ ${THREADS} \
